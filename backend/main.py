@@ -1,6 +1,8 @@
 import uuid
+import os
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from pypdf import PdfReader
 import io
@@ -29,6 +31,8 @@ gemini = GeminiService()
 sheets = SheetsService()
 
 JOB_CACHE: dict = {}
+
+GENERATED_RESUMES_DIR = os.path.join(os.path.dirname(__file__), "generated_resumes")
 
 
 class TailorRequest(BaseModel):
@@ -146,17 +150,59 @@ def generate_resume_pdf(job_id: str, body: ResumePdfRequest):
     if not job:
         raise HTTPException(status_code=404, detail="Job not found or cache expired")
 
+    github_context = fetch_github_context(gemini)
+
     try:
-        structured = gemini.structure_resume(body.resume_text)
+        tex_source = gemini.generate_resume_latex(
+            base_resume=body.resume_text,
+            job_description=job["description"],
+            github_summary=github_context["summary"],
+        )
     except GeminiGenerationError as e:
         raise HTTPException(status_code=502, detail=str(e))
 
-    try:
-        pdf_path = resume_pdf_service.compile_resume_pdf(job_id, structured)
-    except RuntimeError as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    pdf_path = None
+    used_fallback = False
+    last_error = None
 
-    return {"pdf_path": pdf_path}
+    for attempt in range(2):
+        try:
+            pdf_path = resume_pdf_service.compile_resume_pdf_from_latex(job_id, tex_source)
+            break
+        except RuntimeError as e:
+            last_error = str(e)
+            if attempt == 0:
+                try:
+                    tex_source = gemini.generate_resume_latex(
+                        base_resume=body.resume_text,
+                        job_description=job["description"],
+                        github_summary=github_context["summary"],
+                        previous_latex=tex_source,
+                        error_log=last_error,
+                    )
+                except GeminiGenerationError:
+                    break
+
+    if not pdf_path:
+        try:
+            structured = gemini.structure_resume(body.resume_text)
+            pdf_path = resume_pdf_service.compile_resume_pdf_from_structured(job_id, structured)
+            used_fallback = True
+        except (GeminiGenerationError, RuntimeError) as e:
+            raise HTTPException(
+                status_code=500,
+                detail=f"PDF generation failed after retries and fallback: {e}. Last LaTeX error: {last_error}",
+            )
+
+    return {"pdf_path": pdf_path, "used_fallback_template": used_fallback}
+
+
+@app.get("/jobs/{job_id}/resume-pdf/file")
+def get_resume_pdf_file(job_id: str):
+    path = os.path.join(GENERATED_RESUMES_DIR, f"{job_id}.pdf")
+    if not os.path.exists(path):
+        raise HTTPException(status_code=404, detail="No generated PDF for this job yet.")
+    return FileResponse(path, media_type="application/pdf", filename=f"resume_{job_id}.pdf")
 
 
 @app.post("/jobs/{job_id}/autofill")

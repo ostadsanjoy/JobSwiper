@@ -15,6 +15,9 @@ export const generateResumePdf = (jobId, resumeText) =>
     .post(`${BASE_URL}/jobs/${jobId}/resume-pdf`, { resume_text: resumeText })
     .then((r) => r.data);
 
+export const getResumePdfPreviewUrl = (jobId) =>
+  `${BASE_URL}/jobs/${jobId}/resume-pdf/file?t=${Date.now()}`;
+
 export const autofillJob = (jobId, resumeText, coverLetter, resumePdfPath) =>
   axios
     .post(`${BASE_URL}/jobs/${jobId}/autofill`, {
