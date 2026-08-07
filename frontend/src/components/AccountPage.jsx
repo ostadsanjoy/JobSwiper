@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import ResumeUpload from "./ResumeUpload.jsx";
 import CandidateProfileVault from "./CandidateProfileVault.jsx";
+import ApplicationsKanban from "./ApplicationsKanban.jsx";
 import { getCurrentResume, getHistory, getPortfolioAudit } from "../api.js";
 
 function HistoryEntry({ entry }) {
@@ -58,6 +59,7 @@ function HistoryEntry({ entry }) {
 }
 
 export default function AccountPage({ onResumeChange }) {
+  const [activeTab, setActiveTab] = useState("kanban");
   const [resume, setResume] = useState(null);
   const [history, setHistory] = useState([]);
   const [audit, setAudit] = useState(null);
@@ -87,76 +89,119 @@ export default function AccountPage({ onResumeChange }) {
   }, []);
 
   return (
-    <div className="account-page">
-      <div className="account-section">
-        <h2 className="account-section-title">Candidate Q&A Vault & Profile Facts</h2>
-        <CandidateProfileVault />
+    <div className="account-page account-tabs-container">
+      <div className="account-subnav">
+        <button
+          className={`subnav-btn ${activeTab === "kanban" ? "active" : ""}`}
+          onClick={() => setActiveTab("kanban")}
+        >
+          📊 Pipeline Kanban
+        </button>
+        <button
+          className={`subnav-btn ${activeTab === "vault" ? "active" : ""}`}
+          onClick={() => setActiveTab("vault")}
+        >
+          🛡️ Candidate Vault
+        </button>
+        <button
+          className={`subnav-btn ${activeTab === "resume" ? "active" : ""}`}
+          onClick={() => setActiveTab("resume")}
+        >
+          📄 Resume & AI Audit
+        </button>
+        <button
+          className={`subnav-btn ${activeTab === "logs" ? "active" : ""}`}
+          onClick={() => setActiveTab("logs")}
+        >
+          📜 Activity Logs ({history.length})
+        </button>
       </div>
 
-      <div className="account-section">
-        <h2 className="account-section-title">Resume on file</h2>
-        <ResumeUpload currentResume={resume} onUploaded={refresh} />
-      </div>
-
-      <div className="account-section">
-        <div className="account-section-header">
-          <h2 className="account-section-title">GitHub Portfolio & Career Gap Analysis</h2>
-          <button className="audit-btn" onClick={runAudit} disabled={auditLoading}>
-            {auditLoading ? "Analyzing Portfolio..." : audit ? "Refresh AI Audit" : "Run AI Portfolio Audit"}
-          </button>
-        </div>
-
-        {audit && (
-          <div className="audit-card">
-            <p className="audit-verdict">{audit.summary_verdict}</p>
-
-            {audit.strengths?.length > 0 && (
-              <div className="audit-group">
-                <h4 className="audit-group-title strengths">🟢 Key Strengths</h4>
-                <ul>
-                  {audit.strengths.map((s, i) => (
-                    <li key={i}>{s}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {audit.critical_gaps?.length > 0 && (
-              <div className="audit-group">
-                <h4 className="audit-group-title gaps">🔴 Critical Portfolio Gaps</h4>
-                <ul>
-                  {audit.critical_gaps.map((g, i) => (
-                    <li key={i}>{g}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {audit.immediate_focus?.length > 0 && (
-              <div className="audit-group">
-                <h4 className="audit-group-title focus">⚡ Immediate Action Recommendations</h4>
-                <ul className="focus-list">
-                  {audit.immediate_focus.map((f, i) => (
-                    <li key={i}>{f}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
+      <div className="account-tab-content">
+        {activeTab === "kanban" && (
+          <div className="account-section">
+            <ApplicationsKanban history={history} onStatusChanged={refresh} />
           </div>
         )}
-      </div>
 
-      <div className="account-section">
-        <h2 className="account-section-title">Application history ({history.length})</h2>
-        {loading && <p className="status-line">Loading...</p>}
-        {!loading && history.length === 0 && (
-          <p className="status-line">No applications yet - swipe right on something.</p>
+        {activeTab === "vault" && (
+          <div className="account-section">
+            <h2 className="account-section-title">Candidate Q&A Vault & Profile Facts</h2>
+            <CandidateProfileVault />
+          </div>
         )}
-        <div className="history-list">
-          {history.map((entry) => (
-            <HistoryEntry entry={entry} key={entry.id} />
-          ))}
-        </div>
+
+        {activeTab === "resume" && (
+          <>
+            <div className="account-section">
+              <h2 className="account-section-title">Resume on File</h2>
+              <ResumeUpload currentResume={resume} onUploaded={refresh} />
+            </div>
+
+            <div className="account-section">
+              <div className="account-section-header">
+                <h2 className="account-section-title">GitHub Portfolio & Career Gap Analysis</h2>
+                <button className="audit-btn" onClick={runAudit} disabled={auditLoading}>
+                  {auditLoading ? "Analyzing..." : audit ? "Refresh Audit" : "Run AI Audit"}
+                </button>
+              </div>
+
+              {audit && (
+                <div className="audit-card">
+                  <p className="audit-verdict">{audit.summary_verdict}</p>
+
+                  {audit.strengths?.length > 0 && (
+                    <div className="audit-group">
+                      <h4 className="audit-group-title strengths">🟢 Key Strengths</h4>
+                      <ul>
+                        {audit.strengths.map((s, i) => (
+                          <li key={i}>{s}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {audit.critical_gaps?.length > 0 && (
+                    <div className="audit-group">
+                      <h4 className="audit-group-title gaps">🔴 Critical Gaps</h4>
+                      <ul>
+                        {audit.critical_gaps.map((g, i) => (
+                          <li key={i}>{g}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {audit.immediate_focus?.length > 0 && (
+                    <div className="audit-group">
+                      <h4 className="audit-group-title focus">⚡ Immediate Action Recommendations</h4>
+                      <ul className="focus-list">
+                        {audit.immediate_focus.map((f, i) => (
+                          <li key={i}>{f}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </>
+        )}
+
+        {activeTab === "logs" && (
+          <div className="account-section">
+            <h2 className="account-section-title">Detailed History Logs ({history.length})</h2>
+            {loading && <p className="status-line">Loading...</p>}
+            {!loading && history.length === 0 && (
+              <p className="status-line">No applications logged yet.</p>
+            )}
+            <div className="history-list">
+              {history.map((entry) => (
+                <HistoryEntry entry={entry} key={entry.id} />
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

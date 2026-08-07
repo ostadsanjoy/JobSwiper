@@ -139,6 +139,17 @@ def get_history():
     return history
 
 
+def update_application_status(job_id: str, new_status: str):
+    conn = _connect()
+    conn.execute(
+        "UPDATE applications SET status = ? WHERE id = ?",
+        (new_status, job_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+
 def get_cached_repo_analysis(repo_full_name: str, pushed_at: str):
     conn = _connect()
     row = conn.execute(

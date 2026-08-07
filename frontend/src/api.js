@@ -90,3 +90,12 @@ export const saveProfile = (data) =>
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(data),
   });
+
+export const updateApplicationStatus = (jobId, status) =>
+  request(`${BASE_URL}/applications/${jobId}/status`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status }),
+  });
+
+export const EXPORT_CSV_URL = `${BASE_URL}/applications/export`;

@@ -1,7 +1,9 @@
 import os
 import requests
 import re
+import html
 from config import settings
+
 
 FIRECRAWL_SEARCH_URL = "https://api.firecrawl.dev/v1/search"
 
@@ -42,8 +44,10 @@ def fetch_firecrawl_multi_board_jobs(keywords: str = "", location: str = "") -> 
         if not url:
             continue
 
+        raw_desc = html.unescape(item.get("markdown", "") or item.get("description", "") or item.get("snippet", ""))
+        raw_desc = html.unescape(raw_desc)
+
         raw_title = item.get("title", "")
-        raw_desc = item.get("description", "")
 
         board_name = "Job Posting"
         if "linkedin.com" in url:

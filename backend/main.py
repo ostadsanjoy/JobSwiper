@@ -1,9 +1,11 @@
 import hashlib
 import os
-from fastapi import FastAPI, HTTPException, UploadFile, File
+import csv
+from fastapi import FastAPI, HTTPException, UploadFile, File, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
+
 from pypdf import PdfReader
 import io
 
@@ -135,9 +137,44 @@ def save_user_profile(body: ProfileRequest):
 
 
 
+class StatusUpdateRequest(BaseModel):
+    status: str
+
+
 @app.get("/history")
 def get_history():
     return storage.get_history()
+
+
+@app.patch("/applications/{job_id}/status")
+def update_application_status_endpoint(job_id: str, body: StatusUpdateRequest):
+    storage.update_application_status(job_id, body.status)
+    return {"updated": True, "job_id": job_id, "status": body.status}
+
+
+@app.get("/applications/export")
+def export_applications_csv():
+    history = storage.get_history()
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["Job ID", "Timestamp", "Company", "Title", "Location", "Compensation", "Status", "Apply URL"])
+    for entry in history:
+        writer.writerow([
+            entry.get("id", ""),
+            entry.get("timestamp", ""),
+            entry.get("company", ""),
+            entry.get("title", ""),
+            entry.get("location", ""),
+            entry.get("compensation", ""),
+            entry.get("status", ""),
+            entry.get("apply_url", ""),
+        ])
+    return Response(
+        content=output.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=job_applications.csv"},
+    )
+
 
 
 AUDIT_CACHE: dict = {}

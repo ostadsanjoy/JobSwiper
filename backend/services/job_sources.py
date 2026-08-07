@@ -1,6 +1,15 @@
+import html
 import re
 import requests
 from config import settings
+
+def clean_description(raw_desc: str) -> str:
+    if not raw_desc:
+        return ""
+    desc = html.unescape(raw_desc)
+    desc = html.unescape(desc)
+    return desc
+
 
 # Greenhouse and Lever expose public, TOS-friendly JSON endpoints for
 # companies that host their job boards on them. Adzuna and Arbeitnow are
@@ -56,7 +65,7 @@ def fetch_greenhouse_jobs(board_token: str) -> list:
     for j in data:
         title = j.get("title", "")
         location = (j.get("location") or {}).get("name", "")
-        description = j.get("content", "")
+        description = clean_description(j.get("content", ""))
         jobs.append({
             "source": "greenhouse",
             "company": board_token,
@@ -83,7 +92,7 @@ def fetch_lever_jobs(company: str) -> list:
     for j in data:
         title = j.get("text", "")
         location = (j.get("categories") or {}).get("location", "")
-        description = j.get("descriptionPlain", "")
+        description = clean_description(j.get("descriptionPlain", ""))
         jobs.append({
             "source": "lever",
             "company": company,
@@ -111,10 +120,6 @@ def fetch_adzuna_jobs(country: str, keywords: str = "", location: str = "") -> l
     if keywords:
         params["what"] = keywords
     if location:
-        # Adzuna's own location text search - lets a user type any place
-        # (city, region, "remote", etc.) rather than being limited to a
-        # fixed dropdown. The country param just picks which of Adzuna's
-        # per-country indexes to query against.
         params["where"] = location
 
     try:
@@ -128,7 +133,7 @@ def fetch_adzuna_jobs(country: str, keywords: str = "", location: str = "") -> l
     for j in data:
         title = j.get("title", "")
         loc = (j.get("location") or {}).get("display_name", "")
-        description = j.get("description", "")
+        description = clean_description(j.get("description", ""))
 
         salary_min = j.get("salary_min")
         salary_max = j.get("salary_max")
@@ -164,7 +169,8 @@ def fetch_arbeitnow_jobs() -> list:
     for j in data:
         title = j.get("title", "")
         location = j.get("location", "") or ("Remote" if j.get("remote") else "")
-        description = j.get("description", "")
+        description = clean_description(j.get("description", ""))
+
         jobs.append({
             "source": "arbeitnow",
             "company": j.get("company_name", "Unknown"),
