@@ -1,3 +1,17 @@
 {
-    "python-envs.defaultEnvManager": "ms-python.python:system"
+  "python.defaultInterpreterPath": "${workspaceFolder}/backend/venv/Scripts/python.exe",
+  "python.analysis.extraPaths": [
+    "${workspaceFolder}/backend",
+    "${workspaceFolder}/backend/venv/Lib/site-packages"
+  ],
+  "python.autoComplete.extraPaths": [
+    "${workspaceFolder}/backend",
+    "${workspaceFolder}/backend/venv/Lib/site-packages"
+  ],
+  "pyright.extraPaths": [
+    "${workspaceFolder}/backend",
+    "${workspaceFolder}/backend/venv/Lib/site-packages"
+  ],
+  "pyright.venvPath": "${workspaceFolder}/backend",
+  "pyright.venv": "venv"
 }

@@ -1,54 +1,92 @@
-import axios from "axios";
-
 const BASE_URL = "http://localhost:8000";
 
-export const getJobs = ({ keywords = "", location = "", remoteType = "", country = "" } = {}) =>
-  axios
-    .get(`${BASE_URL}/jobs`, { params: { keywords, location, remote_type: remoteType, country } })
-    .then((r) => r.data);
+async function request(url, options = {}) {
+  const res = await fetch(url, options);
+  if (!res.ok) {
+    let detail = `HTTP Error ${res.status}`;
+    try {
+      const err = await res.json();
+      detail = err.detail || detail;
+    } catch (_) {}
+    const error = new Error(detail);
+    error.response = { data: { detail } };
+    throw error;
+  }
+  return res.json();
+}
+
+export const getJobs = ({ keywords = "", location = "", remoteType = "", country = "" } = {}) => {
+  const params = new URLSearchParams();
+  if (keywords) params.append("keywords", keywords);
+  if (location) params.append("location", location);
+  if (remoteType) params.append("remote_type", remoteType);
+  if (country) params.append("country", country);
+  const query = params.toString() ? `?${params.toString()}` : "";
+  return request(`${BASE_URL}/jobs${query}`);
+};
 
 export const tailorJob = (jobId) =>
-  axios.post(`${BASE_URL}/jobs/${jobId}/tailor`, {}).then((r) => r.data);
+  request(`${BASE_URL}/jobs/${jobId}/tailor`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({}),
+  });
 
 export const generateResumePdf = (jobId, resumeText) =>
-  axios
-    .post(`${BASE_URL}/jobs/${jobId}/resume-pdf`, { resume_text: resumeText })
-    .then((r) => r.data);
+  request(`${BASE_URL}/jobs/${jobId}/resume-pdf`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ resume_text: resumeText }),
+  });
 
 export const getResumePdfPreviewUrl = (jobId) =>
   `${BASE_URL}/jobs/${jobId}/resume-pdf/file?t=${Date.now()}`;
 
 export const autofillJob = (jobId, resumeText, coverLetter, resumePdfPath) =>
-  axios
-    .post(`${BASE_URL}/jobs/${jobId}/autofill`, {
+  request(`${BASE_URL}/jobs/${jobId}/autofill`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
       resume_text: resumeText,
       cover_letter: coverLetter,
       resume_pdf_path: resumePdfPath || "",
-    })
-    .then((r) => r.data);
+    }),
+  });
 
 export const logJob = (jobId, status, extra = {}) =>
-  axios
-    .post(`${BASE_URL}/jobs/${jobId}/log`, {
+  request(`${BASE_URL}/jobs/${jobId}/log`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
       status,
       resume_text: extra.resumeText || "",
       cover_letter: extra.coverLetter || "",
       github_repos: extra.githubRepos || [],
-    })
-    .then((r) => r.data);
+    }),
+  });
 
 export const uploadResume = (file) => {
   const form = new FormData();
   form.append("file", file);
-  return axios
-    .post(`${BASE_URL}/resume/upload`, form, {
-      headers: { "Content-Type": "multipart/form-data" },
-    })
-    .then((r) => r.data);
+  return request(`${BASE_URL}/resume/upload`, {
+    method: "POST",
+    body: form,
+  });
 };
 
-export const getCurrentResume = () =>
-  axios.get(`${BASE_URL}/resume/current`).then((r) => r.data);
+export const getCurrentResume = () => request(`${BASE_URL}/resume/current`);
 
-export const getHistory = () =>
-  axios.get(`${BASE_URL}/history`).then((r) => r.data);
+export const getHistory = () => request(`${BASE_URL}/history`);
+
+export const getJobMatchScore = (jobId) => request(`${BASE_URL}/jobs/${jobId}/match`);
+
+export const getPortfolioAudit = () => request(`${BASE_URL}/account/audit`);
+
+export const getProfile = () => request(`${BASE_URL}/profile`);
+
+export const saveProfile = (data) =>
+  request(`${BASE_URL}/profile`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });

@@ -44,6 +44,23 @@ def init_db():
             description TEXT
         )
     """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS profile_store (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            full_name TEXT,
+            email TEXT,
+            phone TEXT,
+            location TEXT,
+            linkedin_url TEXT,
+            github_url TEXT,
+            portfolio_url TEXT,
+            work_auth TEXT,
+            sponsorship_req TEXT,
+            expected_salary TEXT,
+            notice_period TEXT,
+            updated_at TEXT
+        )
+    """)
     conn.commit()
     conn.close()
 
@@ -146,3 +163,66 @@ def save_repo_analysis(repo_full_name: str, pushed_at: str, description: str):
     )
     conn.commit()
     conn.close()
+
+
+def save_profile(profile: dict):
+    conn = _connect()
+    conn.execute(
+        """
+        INSERT INTO profile_store (
+            id, full_name, email, phone, location, linkedin_url, github_url,
+            portfolio_url, work_auth, sponsorship_req, expected_salary, notice_period, updated_at
+        )
+        VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+            full_name = excluded.full_name,
+            email = excluded.email,
+            phone = excluded.phone,
+            location = excluded.location,
+            linkedin_url = excluded.linkedin_url,
+            github_url = excluded.github_url,
+            portfolio_url = excluded.portfolio_url,
+            work_auth = excluded.work_auth,
+            sponsorship_req = excluded.sponsorship_req,
+            expected_salary = excluded.expected_salary,
+            notice_period = excluded.notice_period,
+            updated_at = excluded.updated_at
+        """,
+        (
+            profile.get("full_name", ""),
+            profile.get("email", ""),
+            profile.get("phone", ""),
+            profile.get("location", ""),
+            profile.get("linkedin_url", ""),
+            profile.get("github_url", ""),
+            profile.get("portfolio_url", ""),
+            profile.get("work_auth", ""),
+            profile.get("sponsorship_req", ""),
+            profile.get("expected_salary", ""),
+            profile.get("notice_period", ""),
+            datetime.datetime.utcnow().isoformat(),
+        ),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_profile() -> dict:
+    conn = _connect()
+    row = conn.execute("SELECT * FROM profile_store WHERE id = 1").fetchone()
+    conn.close()
+    if not row:
+        return {
+            "full_name": "",
+            "email": "",
+            "phone": "",
+            "location": "",
+            "linkedin_url": "",
+            "github_url": "",
+            "portfolio_url": "",
+            "work_auth": "Authorized to work",
+            "sponsorship_req": "No sponsorship required",
+            "expected_salary": "Open / Market Rate",
+            "notice_period": "Immediate",
+        }
+    return dict(row)

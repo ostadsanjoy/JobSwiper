@@ -178,12 +178,52 @@ def fetch_arbeitnow_jobs() -> list:
     return jobs
 
 
+def fetch_remoteok_jobs() -> list:
+    headers = {"User-Agent": "JobSwiper/1.0"}
+    try:
+        resp = requests.get("https://remoteok.com/api", headers=headers, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+        data = data[1:] if isinstance(data, list) and len(data) > 1 else []
+    except Exception:
+        return []
+
+    jobs = []
+    for j in data[:35]:
+        title = j.get("position", "")
+        company = j.get("company", "Unknown")
+        location = j.get("location", "") or "Remote"
+        description = j.get("description", "")
+        url = j.get("url", "") or f"https://remoteok.com/remote-jobs/{j.get('id', '')}"
+        tags = ", ".join(j.get("tags", []))
+        full_desc = f"{description} Tags: {tags}"
+
+        jobs.append({
+            "source": "remoteok",
+            "company": company,
+            "title": title,
+            "location": location,
+            "description": full_desc,
+            "apply_url": url,
+            "remote_type": "remote",
+            "compensation": extract_compensation_from_text(full_desc),
+        })
+    return jobs
+
+
+DEFAULT_GREENHOUSE_BOARDS = ["stripe", "cloudflare", "gitlab", "vercel", "linear", "supabase", "datadog", "figma", "notion"]
+DEFAULT_LEVER_COMPANIES = ["airbnb", "netflix", "spotify", "postman"]
+
+
 def aggregate_jobs(keywords: str = "", location: str = "", remote_type: str = "", country: str = "") -> list:
     jobs = []
 
-    for board in settings.greenhouse_board_tokens:
+    gh_boards = list(set(settings.greenhouse_board_tokens + DEFAULT_GREENHOUSE_BOARDS))
+    for board in gh_boards:
         jobs.extend(fetch_greenhouse_jobs(board))
-    for company in settings.lever_companies:
+
+    lever_comps = list(set(settings.lever_companies + DEFAULT_LEVER_COMPANIES))
+    for company in lever_comps:
         jobs.extend(fetch_lever_jobs(company))
 
     adzuna_countries = [country] if country else settings.adzuna_countries
@@ -191,17 +231,21 @@ def aggregate_jobs(keywords: str = "", location: str = "", remote_type: str = ""
         jobs.extend(fetch_adzuna_jobs(c, keywords=keywords, location=location))
 
     jobs.extend(fetch_arbeitnow_jobs())
+    jobs.extend(fetch_remoteok_jobs())
+
+    try:
+        from services.firecrawl_service import fetch_linkedin_firecrawl_jobs
+        jobs.extend(fetch_linkedin_firecrawl_jobs(keywords=keywords, location=location))
+    except Exception:
+        pass
 
     if keywords:
         kw = keywords.lower()
-        jobs = [j for j in jobs if kw in j["title"].lower() or kw in j["description"].lower()]
+        jobs = [j for j in jobs if kw in j["title"].lower() or kw in j["description"].lower() or j["source"].endswith("-firecrawl")]
     if location:
-        # Adzuna already applied this server-side via `where`, but
-        # Greenhouse/Lever/Arbeitnow have no location param, so filter
-        # those client-side here too.
         loc = location.lower()
-        jobs = [j for j in jobs if loc in j["location"].lower() or j["source"].startswith("adzuna")]
+        jobs = [j for j in jobs if loc in j["location"].lower() or j["source"].startswith("adzuna") or j["source"].endswith("-firecrawl")]
     if remote_type and remote_type != "any":
         jobs = [j for j in jobs if j["remote_type"] == remote_type]
 
-    return jobs
+    return jobs

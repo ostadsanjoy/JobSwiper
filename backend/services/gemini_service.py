@@ -230,3 +230,114 @@ TARGET JOB DESCRIPTION:
 Output ONLY the complete LaTeX document, starting with \\documentclass and
 ending with \\end{{document}}. No commentary, no markdown fences."""
         return self._clean_latex(self._generate(prompt))
+
+    def map_application_fields(
+        self, fields: list, resume_text: str, cover_letter: str, profile: dict = None
+    ) -> dict:
+        profile_facts = json.dumps(profile or {}, indent=2)
+        prompt = f"""You are an AI Job Application Agent filling out an online job application form.
+
+Candidate Ground Truth Profile Facts:
+{profile_facts}
+
+Candidate Tailored Resume:
+{resume_text}
+
+Candidate Cover Letter:
+{cover_letter}
+
+Form Fields Detected on Application Page:
+{json.dumps(fields, indent=2)}
+
+INSTRUCTIONS:
+1. For contact info (Name, Email, Phone, Location, LinkedIn, GitHub, Portfolio): use Ground Truth Profile Facts.
+2. For Work Authorization, Visa Sponsorship, Expected Salary, Notice Period questions: use Ground Truth Profile Facts.
+3. For resume file upload fields: set action="upload_resume", value=""
+4. For cover letter textareas: set action="fill", value=candidate cover letter
+5. For dropdown select fields: choose the option text that best matches candidate profile.
+
+Output ONLY valid JSON:
+{{
+  "actions": {{
+    "field_id": {{"action": "fill", "value": "text..."}}
+  }}
+}}"""
+        return self._generate_json(prompt)
+
+    def evaluate_job_match(
+        self, job_title: str, job_description: str, resume_text: str
+    ) -> dict:
+        if not resume_text:
+            return {
+                "score": 0,
+                "badge": "Upload Resume",
+                "matching_skills": [],
+                "missing_skills": [],
+            }
+        prompt = f"""You are a senior technical recruiter and talent evaluator. Analyze how well the candidate's resume matches the target job description.
+
+JOB TITLE: {job_title}
+
+JOB DESCRIPTION:
+{job_description[:3000]}
+
+CANDIDATE RESUME:
+{resume_text[:3000]}
+
+Provide an objective match evaluation as valid JSON:
+- "score": Integer from 0 to 100.
+- "badge": Short string like "Strong Fit", "Good Match", "Moderate Fit", or "Low Fit".
+- "matching_skills": Array of up to 4 key matching skills.
+- "missing_skills": Array of up to 3 missing skills.
+
+Output ONLY valid JSON:
+{{
+  "score": 85,
+  "badge": "Strong Fit",
+  "matching_skills": ["React", "TypeScript"],
+  "missing_skills": ["GraphQL"]
+}}"""
+        try:
+            return self._generate_json(prompt)
+        except Exception:
+            return {
+                "score": 70,
+                "badge": "Moderate Fit",
+                "matching_skills": ["General Skills"],
+                "missing_skills": [],
+            }
+
+    def analyze_portfolio_gaps(
+        self, resume_text: str, github_summary: str
+    ) -> dict:
+        prompt = f"""You are an elite Tech Career Lead and Hiring Director. Analyze the candidate's active resume and GitHub portfolio context below. Identify key strengths, critical gaps, and high-impact immediate recommendations.
+
+CANDIDATE RESUME:
+{resume_text[:4000] if resume_text else "No resume uploaded yet."}
+
+GITHUB PORTFOLIO CONTEXT:
+{github_summary[:4000] if github_summary else "No GitHub projects fetched."}
+
+Provide a realistic, actionable career gap analysis as valid JSON:
+- "strengths": Array of 2-4 key technical strengths.
+- "critical_gaps": Array of 2-4 missing industry skills or project types.
+- "immediate_focus": Array of 2-3 specific actionable projects/features to build next.
+- "summary_verdict": Short 1-2 sentence overall summary verdict.
+
+Output ONLY valid JSON:
+{{
+  "strengths": ["Strong frontend experience with React & Vite", "Real-world project portfolio"],
+  "critical_gaps": ["Lacks experience with Docker containerization", "No unit test suites in public repos"],
+  "immediate_focus": ["Add Dockerfile and CI/CD GitHub Action to top repo", "Build a service demonstrating Redis caching"],
+  "summary_verdict": "Solid technical foundation. Adding production DevOps tooling will boost recruiter callbacks."
+}}"""
+        try:
+            return self._generate_json(prompt)
+        except Exception as e:
+            return {
+                "strengths": ["Active developer"],
+                "critical_gaps": ["Upload resume for full AI analysis"],
+                "immediate_focus": ["Upload a PDF resume in Account tab"],
+                "summary_verdict": f"Analysis pending: {e}",
+            }
+

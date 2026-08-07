@@ -32,11 +32,6 @@ export default function App() {
     getCurrentResume().then((r) => setHasResume(Boolean(r.resume_text)));
   }, []);
 
-  useEffect(() => {
-    if (tab === "swipe") {
-      getCurrentResume().then((r) => setHasResume(Boolean(r.resume_text)));
-    }
-  }, [tab]);
 
   const advance = (stampType) => {
     setStamp(stampType);

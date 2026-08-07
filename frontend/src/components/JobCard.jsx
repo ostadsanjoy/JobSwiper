@@ -1,30 +1,79 @@
-import React, { useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import React, { useState, useEffect, useRef } from "react";
 import { stripHtml } from "../utils.js";
+import { getJobMatchScore } from "../api.js";
 import JobDetailModal from "./JobDetailModal.jsx";
 
 export default function JobCard({ job, onSwipe, stamp }) {
   const [showDetail, setShowDetail] = useState(false);
+  const [matchData, setMatchData] = useState(null);
+  const [dragX, setDragX] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
+  const startXRef = useRef(0);
+
   const previewText = stripHtml(job.description);
+
+  useEffect(() => {
+    if (job?.id) {
+      getJobMatchScore(job.id)
+        .then((res) => setMatchData(res))
+        .catch(() => setMatchData(null));
+    }
+  }, [job?.id]);
+
+  const handleStart = (clientX) => {
+    setIsDragging(true);
+    startXRef.current = clientX;
+  };
+
+  const handleMove = (clientX) => {
+    if (!isDragging) return;
+    setDragX(clientX - startXRef.current);
+  };
+
+  const handleEnd = () => {
+    if (!isDragging) return;
+    setIsDragging(false);
+    if (dragX > 120) {
+      onSwipe("right");
+    } else if (dragX < -120) {
+      onSwipe("left");
+    }
+    setDragX(0);
+  };
+
+  const getScoreColorClass = (score) => {
+    if (score >= 80) return "high-match";
+    if (score >= 60) return "med-match";
+    return "low-match";
+  };
 
   return (
     <>
-      <motion.div
-        className="job-card"
-        drag="x"
-        dragConstraints={{ left: 0, right: 0 }}
-        onDragEnd={(_, info) => {
-          if (info.offset.x > 120) onSwipe("right");
-          else if (info.offset.x < -120) onSwipe("left");
+      <div
+        className={`job-card ${isDragging ? "dragging" : ""}`}
+        style={{
+          transform: `translateX(${dragX}px) rotate(${dragX * 0.05}deg)`,
+          transition: isDragging ? "none" : "transform 0.2s ease, opacity 0.2s ease",
+          cursor: isDragging ? "grabbing" : "grab",
         }}
-        whileDrag={{ scale: 1.03 }}
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.2 }}
+        onMouseDown={(e) => handleStart(e.clientX)}
+        onMouseMove={(e) => handleMove(e.clientX)}
+        onMouseUp={handleEnd}
+        onMouseLeave={handleEnd}
+        onTouchStart={(e) => handleStart(e.touches[0].clientX)}
+        onTouchMove={(e) => handleMove(e.touches[0].clientX)}
+        onTouchEnd={handleEnd}
       >
         <div className="card-tab">
           <span>{job.company}</span>
-          <span className="remote-badge">{job.remote_type || "unspecified"}</span>
+          <div className="card-tab-badges">
+            {matchData && matchData.score > 0 && (
+              <span className={`match-badge ${getScoreColorClass(matchData.score)}`}>
+                ⚡ {matchData.score}% Match
+              </span>
+            )}
+            <span className="remote-badge">{job.remote_type || "unspecified"}</span>
+          </div>
         </div>
 
         <div className="card-body">
@@ -46,24 +95,16 @@ export default function JobCard({ job, onSwipe, stamp }) {
           </button>
         </div>
 
-        <AnimatePresence>
-          {stamp && (
-            <motion.div
-              className="stamp-overlay"
-              initial={{ opacity: 0, scale: 1.4 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.18 }}
-            >
-              <div className={`stamp-overlay-text ${stamp}`}>
-                {stamp === "applied" ? "APPLIED" : "PASSED"}
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </motion.div>
+        {stamp && (
+          <div className="stamp-overlay stamp-fade">
+            <div className={`stamp-overlay-text ${stamp}`}>
+              {stamp === "applied" ? "APPLIED" : "PASSED"}
+            </div>
+          </div>
+        )}
+      </div>
 
-      {showDetail && <JobDetailModal job={job} onClose={() => setShowDetail(false)} />}
+      {showDetail && <JobDetailModal job={job} matchData={matchData} onClose={() => setShowDetail(false)} />}
     </>
   );
 }

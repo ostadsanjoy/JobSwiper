@@ -12,9 +12,6 @@ class Settings:
     github_token: str = os.getenv("GITHUB_TOKEN", "")
     github_username: str = os.getenv("GITHUB_USERNAME", "")
 
-    google_sheets_creds_file: str = os.getenv("GOOGLE_SHEETS_CREDS_FILE", "credentials.json")
-    google_sheet_name: str = os.getenv("GOOGLE_SHEET_NAME", "JobApplications")
-
     greenhouse_board_tokens: list = [
         t.strip() for t in os.getenv("GREENHOUSE_BOARD_TOKENS", "").split(",") if t.strip()
     ]
@@ -27,6 +24,8 @@ class Settings:
     adzuna_countries: list = [
         c.strip() for c in os.getenv("ADZUNA_COUNTRIES", "us,in").split(",") if c.strip()
     ]
+    firecrawl_api_key: str = os.getenv("FIRECRAWL_API_KEY", "")
+
 
 
 settings = Settings()

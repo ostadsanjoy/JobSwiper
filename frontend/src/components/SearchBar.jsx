@@ -1,9 +1,5 @@
 import React, { useState } from "react";
 
-// Full set of countries Adzuna's public API currently indexes. The country
-// select controls which Adzuna per-country endpoint gets queried; the
-// separate location text box is a free-text search (city, region, "remote",
-// anything) applied on top, so you're not limited to picking from a list.
 const COUNTRIES = [
   { code: "", label: "Any Adzuna country" },
   { code: "us", label: "United States" },
@@ -14,17 +10,6 @@ const COUNTRIES = [
   { code: "fr", label: "France" },
   { code: "ca", label: "Canada" },
   { code: "nz", label: "New Zealand" },
-  { code: "za", label: "South Africa" },
-  { code: "pl", label: "Poland" },
-  { code: "nl", label: "Netherlands" },
-  { code: "it", label: "Italy" },
-  { code: "es", label: "Spain" },
-  { code: "at", label: "Austria" },
-  { code: "be", label: "Belgium" },
-  { code: "br", label: "Brazil" },
-  { code: "mx", label: "Mexico" },
-  { code: "sg", label: "Singapore" },
-  { code: "ch", label: "Switzerland" },
 ];
 
 const REMOTE_TYPES = [

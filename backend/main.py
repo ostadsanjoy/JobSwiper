@@ -1,4 +1,4 @@
-import uuid
+import hashlib
 import os
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,10 +11,10 @@ from config import settings
 from services.job_sources import aggregate_jobs
 from services.gemini_service import GeminiService, GeminiGenerationError
 from services.github_service import fetch_github_context
-from services.sheets_service import SheetsService
-from services.autofill_service import autofill_application
+from services.autofill_agent import run_ai_autofill_agent
 from services import storage
 from services import resume_pdf_service
+
 
 storage.init_db()
 
@@ -28,9 +28,9 @@ app.add_middleware(
 )
 
 gemini = GeminiService()
-sheets = SheetsService()
 
 JOB_CACHE: dict = {}
+MATCH_CACHE: dict = {}
 
 GENERATED_RESUMES_DIR = os.path.join(os.path.dirname(__file__), "generated_resumes")
 
@@ -56,11 +56,29 @@ class LogRequest(BaseModel):
     github_repos: list = []
 
 
+class ProfileRequest(BaseModel):
+    full_name: str = ""
+    email: str = ""
+    phone: str = ""
+    location: str = ""
+    linkedin_url: str = ""
+    github_url: str = ""
+    portfolio_url: str = ""
+    work_auth: str = ""
+    sponsorship_req: str = ""
+    expected_salary: str = ""
+    notice_period: str = ""
+
+
+
+
+
 @app.get("/jobs")
 def get_jobs(keywords: str = "", location: str = "", remote_type: str = "", country: str = ""):
     jobs = aggregate_jobs(keywords=keywords, location=location, remote_type=remote_type, country=country)
     for job in jobs:
-        job_id = str(uuid.uuid4())
+        apply_url = job.get("apply_url") or f"{job.get('company')}:{job.get('title')}"
+        job_id = hashlib.md5(apply_url.encode("utf-8")).hexdigest()[:12]
         job["id"] = job_id
         JOB_CACHE[job_id] = job
     return jobs
@@ -104,9 +122,46 @@ def get_current_resume():
     return resume
 
 
+@app.get("/profile")
+def get_user_profile():
+    return storage.get_profile()
+
+
+@app.post("/profile")
+def save_user_profile(body: ProfileRequest):
+    data = body.dict()
+    storage.save_profile(data)
+    return {"saved": True, "profile": data}
+
+
+
 @app.get("/history")
 def get_history():
     return storage.get_history()
+
+
+AUDIT_CACHE: dict = {}
+
+
+@app.get("/account/audit")
+def get_portfolio_audit():
+    stored = storage.get_resume()
+    resume_text = stored["resume_text"] if stored else ""
+
+    github_context = fetch_github_context(gemini)
+
+    cache_key = f"{len(resume_text)}:{len(github_context.get('summary', ''))}"
+    if cache_key in AUDIT_CACHE:
+        return AUDIT_CACHE[cache_key]
+
+    audit_result = gemini.analyze_portfolio_gaps(
+        resume_text=resume_text,
+        github_summary=github_context.get("summary", ""),
+    )
+    audit_result["github_repos"] = github_context.get("repo_names", [])
+    AUDIT_CACHE[cache_key] = audit_result
+    return audit_result
+
 
 
 @app.post("/jobs/{job_id}/tailor")
@@ -144,6 +199,27 @@ def tailor_job(job_id: str, body: TailorRequest):
     }
 
 
+@app.get("/jobs/{job_id}/match")
+def get_job_match(job_id: str):
+    job = JOB_CACHE.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found or cache expired")
+
+    if job_id in MATCH_CACHE:
+        return MATCH_CACHE[job_id]
+
+    resume = storage.get_resume()
+    resume_text = resume["resume_text"] if resume else ""
+
+    match_result = gemini.evaluate_job_match(
+        job_title=job.get("title", ""),
+        job_description=job.get("description", ""),
+        resume_text=resume_text,
+    )
+    MATCH_CACHE[job_id] = match_result
+    return match_result
+
+
 @app.post("/jobs/{job_id}/resume-pdf")
 def generate_resume_pdf(job_id: str, body: ResumePdfRequest):
     job = JOB_CACHE.get(job_id)
@@ -158,40 +234,17 @@ def generate_resume_pdf(job_id: str, body: ResumePdfRequest):
             job_description=job["description"],
             github_summary=github_context["summary"],
         )
-    except GeminiGenerationError as e:
-        raise HTTPException(status_code=502, detail=str(e))
-
-    pdf_path = None
-    used_fallback = False
-    last_error = None
-
-    for attempt in range(2):
-        try:
-            pdf_path = resume_pdf_service.compile_resume_pdf_from_latex(job_id, tex_source)
-            break
-        except RuntimeError as e:
-            last_error = str(e)
-            if attempt == 0:
-                try:
-                    tex_source = gemini.generate_resume_latex(
-                        base_resume=body.resume_text,
-                        job_description=job["description"],
-                        github_summary=github_context["summary"],
-                        previous_latex=tex_source,
-                        error_log=last_error,
-                    )
-                except GeminiGenerationError:
-                    break
-
-    if not pdf_path:
+        pdf_path = resume_pdf_service.compile_resume_pdf_from_latex(job_id, tex_source)
+        used_fallback = False
+    except Exception as e:
         try:
             structured = gemini.structure_resume(body.resume_text)
             pdf_path = resume_pdf_service.compile_resume_pdf_from_structured(job_id, structured)
             used_fallback = True
-        except (GeminiGenerationError, RuntimeError) as e:
+        except Exception as fallback_error:
             raise HTTPException(
                 status_code=500,
-                detail=f"PDF generation failed after retries and fallback: {e}. Last LaTeX error: {last_error}",
+                detail=f"PDF generation failed: {e}. Fallback error: {fallback_error}",
             )
 
     return {"pdf_path": pdf_path, "used_fallback_template": used_fallback}
@@ -211,13 +264,17 @@ def autofill_job(job_id: str, body: AutofillRequest):
     if not job:
         raise HTTPException(status_code=404, detail="Job not found or cache expired")
 
-    result = autofill_application(
+    profile = storage.get_profile()
+    result = run_ai_autofill_agent(
+        gemini=gemini,
         url=job["apply_url"],
         resume_text=body.resume_text,
         cover_letter=body.cover_letter,
         resume_pdf_path=body.resume_pdf_path,
+        profile=profile,
     )
     return result
+
 
 
 @app.post("/jobs/{job_id}/log")
@@ -226,7 +283,6 @@ def log_job(job_id: str, body: LogRequest):
     if not job:
         raise HTTPException(status_code=404, detail="Job not found or cache expired")
 
-    sheets.log_application(job=job, status=body.status)
     storage.save_application(
         job_id=job_id,
         job=job,

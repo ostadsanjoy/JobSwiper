@@ -3,8 +3,8 @@ uvicorn[standard]
 python-dotenv
 requests
 google-generativeai
-gspread
-oauth2client
 playwright
 pypdf
 python-multipart
+beautifulsoup4
+
