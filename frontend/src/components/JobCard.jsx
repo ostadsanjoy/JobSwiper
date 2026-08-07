@@ -13,12 +13,19 @@ export default function JobCard({ job, onSwipe, stamp }) {
   const previewText = stripHtml(job.description);
 
   useEffect(() => {
+    if (job?.match_score !== undefined) {
+      setMatchData({
+        score: job.match_score,
+        badge: job.match_badge || "Fit Score",
+      });
+    }
     if (job?.id) {
       getJobMatchScore(job.id)
         .then((res) => setMatchData(res))
-        .catch(() => setMatchData(null));
+        .catch(() => {});
     }
-  }, [job?.id]);
+  }, [job?.id, job?.match_score, job?.match_badge]);
+
 
   const handleStart = (clientX) => {
     setIsDragging(true);

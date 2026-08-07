@@ -78,12 +78,48 @@ class ProfileRequest(BaseModel):
 @app.get("/jobs")
 def get_jobs(keywords: str = "", location: str = "", remote_type: str = "", country: str = ""):
     jobs = aggregate_jobs(keywords=keywords, location=location, remote_type=remote_type, country=country)
+    
+    resume_data = storage.get_resume()
+    resume_text = resume_data.get("resume_text", "") if resume_data else ""
+    profile_data = storage.get_profile() or {}
+
+    filtered_jobs = []
+    kw_tokens = [k.strip().lower() for k in keywords.split() if len(k.strip()) > 2] if keywords else []
+
     for job in jobs:
         apply_url = job.get("apply_url") or f"{job.get('company')}:{job.get('title')}"
         job_id = hashlib.md5(apply_url.encode("utf-8")).hexdigest()[:12]
         job["id"] = job_id
+
+        # Compute match evaluation score against candidate resume & profile facts
+        match_eval = gemini.compute_fast_match_score(
+            job.get("title", ""),
+            job.get("description", ""),
+            resume_text,
+            profile_data,
+        )
+
+        job["match_score"] = match_eval.get("score", 50)
+        job["match_badge"] = match_eval.get("badge", "Unrated")
         JOB_CACHE[job_id] = job
-    return jobs
+        MATCH_CACHE[job_id] = match_eval
+
+        # Strict keyword relevance check if user searched specific terms
+        if kw_tokens:
+            blob = f"{job.get('title', '')} {job.get('description', '')}".lower()
+            if not any(token in blob for token in kw_tokens):
+                continue
+
+        filtered_jobs.append(job)
+
+    # Permanently store all aggregated/scraped jobs in SQLite database!
+    storage.save_jobs(jobs)
+
+    # Sort jobs by match_score descending so highest matching ML / Web Dev jobs appear FIRST!
+    filtered_jobs.sort(key=lambda j: j.get("match_score", 0), reverse=True)
+    return filtered_jobs
+
+
 
 
 @app.get("/jobs/{job_id}")

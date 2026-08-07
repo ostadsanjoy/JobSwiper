@@ -45,8 +45,27 @@ export default function JobDetailModal({ job, matchData, onClose }) {
                 </div>
               </div>
             )}
+
+            {matchData.portfolio_gaps?.length > 0 && (
+              <div className="ai-skills-group" style={{ marginTop: 10 }}>
+                <span className="ai-skills-label">Portfolio Gaps & Action Items:</span>
+                <ul className="portfolio-gap-list">
+                  {matchData.portfolio_gaps.map((gap, i) => (
+                    <li key={i}>{gap}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {matchData.work_auth_fit && (
+              <div className="ai-skills-group" style={{ marginTop: 8 }}>
+                <span className="ai-skills-label">Work Auth & Sponsorship:</span>
+                <span className="auth-fit-badge">🛡️ {matchData.work_auth_fit}</span>
+              </div>
+            )}
           </div>
         )}
+
 
         <div className="job-description job-description-full" dangerouslySetInnerHTML={{ __html: safeHtml }} />
         <div className="review-actions">

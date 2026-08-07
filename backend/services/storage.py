@@ -61,8 +61,65 @@ def init_db():
             updated_at TEXT
         )
     """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS jobs_store (
+            id TEXT PRIMARY KEY,
+            source TEXT,
+            company TEXT,
+            title TEXT,
+            location TEXT,
+            description TEXT,
+            apply_url TEXT,
+            remote_type TEXT,
+            compensation TEXT,
+            fetched_at TEXT
+        )
+    """)
     conn.commit()
     conn.close()
+
+
+def save_jobs(jobs: list):
+    if not jobs:
+        return
+    conn = _connect()
+    now = datetime.datetime.utcnow().isoformat()
+    for j in jobs:
+        conn.execute("""
+            INSERT INTO jobs_store (id, source, company, title, location, description, apply_url, remote_type, compensation, fetched_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                source = excluded.source,
+                company = excluded.company,
+                title = excluded.title,
+                location = excluded.location,
+                description = excluded.description,
+                apply_url = excluded.apply_url,
+                remote_type = excluded.remote_type,
+                compensation = excluded.compensation,
+                fetched_at = excluded.fetched_at
+        """, (
+            j.get("id"),
+            j.get("source", ""),
+            j.get("company", ""),
+            j.get("title", ""),
+            j.get("location", ""),
+            j.get("description", ""),
+            j.get("apply_url", ""),
+            j.get("remote_type", ""),
+            j.get("compensation", ""),
+            now,
+        ))
+    conn.commit()
+    conn.close()
+
+
+def get_all_stored_jobs() -> list:
+    conn = _connect()
+    rows = conn.execute("SELECT * FROM jobs_store ORDER BY fetched_at DESC").fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
 
 
 def save_resume(resume_text: str, source_filename: str = ""):

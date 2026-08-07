@@ -273,8 +273,10 @@ Output ONLY valid JSON:
                 "badge": "Upload Resume",
                 "matching_skills": [],
                 "missing_skills": [],
+                "portfolio_gaps": ["Upload resume to analyze portfolio gaps"],
+                "work_auth_fit": "Unknown",
             }
-        prompt = f"""You are a senior technical recruiter and talent evaluator. Analyze how well the candidate's resume matches the target job description.
+        prompt = f"""You are a senior technical recruiter and talent evaluator. Analyze how well the candidate's resume matches the target job description across technical skills, portfolio evidence, and role requirements.
 
 JOB TITLE: {job_title}
 
@@ -284,28 +286,197 @@ JOB DESCRIPTION:
 CANDIDATE RESUME:
 {resume_text[:3000]}
 
-Provide an objective match evaluation as valid JSON:
+Provide an objective multi-parameter match evaluation as valid JSON:
 - "score": Integer from 0 to 100.
 - "badge": Short string like "Strong Fit", "Good Match", "Moderate Fit", or "Low Fit".
 - "matching_skills": Array of up to 4 key matching skills.
 - "missing_skills": Array of up to 3 missing skills.
+- "portfolio_gaps": Array of up to 3 specific portfolio gaps or missing project evidence.
+- "work_auth_fit": Short string summary of work authorization / visa fit.
 
 Output ONLY valid JSON:
 {{
   "score": 85,
   "badge": "Strong Fit",
-  "matching_skills": ["React", "TypeScript"],
-  "missing_skills": ["GraphQL"]
+  "matching_skills": ["React", "TypeScript", "FastAPI"],
+  "missing_skills": ["Kubernetes"],
+  "portfolio_gaps": ["Missing Docker containerization proof in portfolio"],
+  "work_auth_fit": "No Sponsorship Needed"
 }}"""
         try:
             return self._generate_json(prompt)
         except Exception:
+            return self.compute_fast_match_score(job_title, job_description, resume_text)
+
+    def compute_fast_match_score(
+        self, job_title: str, job_description: str, candidate_resume: str, candidate_profile: dict = None, github_repos: list = None
+    ) -> dict:
+        profile_data = candidate_profile or {}
+        repo_list = github_repos or []
+        combined_candidate = " ".join([
+            profile_data.get("full_name", ""),
+            profile_data.get("expected_salary", ""),
+            profile_data.get("work_auth", ""),
+            profile_data.get("sponsorship_req", ""),
+            candidate_resume or "",
+            " ".join(repo_list),
+        ]).lower()
+
+        if not combined_candidate.strip():
             return {
-                "score": 70,
-                "badge": "Moderate Fit",
-                "matching_skills": ["General Skills"],
+                "score": 0,
+                "badge": "Upload Resume",
+                "matching_skills": [],
                 "missing_skills": [],
+                "portfolio_gaps": ["Upload resume & Candidate Vault to evaluate fit"],
+                "work_auth_fit": "Unknown",
             }
+
+        title_lower = (job_title or "").lower()
+        desc_lower = (job_description or "").lower()
+        blob_lower = f"{title_lower} {desc_lower}"
+
+        KNOWN_TECH_SKILLS = {
+            "aem": "AEM (Adobe Experience Manager)",
+            "java": "Java",
+            "python": "Python",
+            "javascript": "JavaScript",
+            "typescript": "TypeScript",
+            "react": "React",
+            "node": "Node.js",
+            "pytorch": "PyTorch",
+            "tensorflow": "TensorFlow",
+            "fastapi": "FastAPI",
+            "django": "Django",
+            "flask": "Flask",
+            "spring": "Spring Boot",
+            "sql": "SQL",
+            "postgresql": "PostgreSQL",
+            "mongodb": "MongoDB",
+            "redis": "Redis",
+            "docker": "Docker",
+            "kubernetes": "Kubernetes",
+            "aws": "AWS",
+            "gcp": "Google Cloud",
+            "azure": "Azure",
+            "graphql": "GraphQL",
+            "rest": "REST APIs",
+            "git": "Git",
+            "ci/cd": "CI/CD",
+            "machine learning": "Machine Learning",
+            "deep learning": "Deep Learning",
+            "nlp": "NLP",
+            "html": "HTML",
+            "css": "CSS",
+            "vue": "Vue.js",
+            "next.js": "Next.js",
+            "c++": "C++",
+            "go": "Go",
+            "rust": "Rust",
+        }
+
+        # Find actual tech skills required by JD
+        jd_tech_requirements = []
+        for key, display_name in KNOWN_TECH_SKILLS.items():
+            if key in blob_lower:
+                jd_tech_requirements.append((key, display_name))
+
+        matching_skills = []
+        missing_skills = []
+        for key, display_name in jd_tech_requirements:
+            if key in combined_candidate:
+                matching_skills.append(display_name)
+            else:
+                missing_skills.append(display_name)
+
+        # Check Seniority & Experience Level
+        seniority_gap = None
+        is_senior_jd = any(s in title_lower for s in ["senior", "sr.", "lead", "staff", "principal", "director", "head"])
+        candidate_years = 0
+        years_match = re.search(r"(\d+)\+?\s*years?", combined_candidate)
+        if years_match:
+            candidate_years = int(years_match.group(1))
+
+        if is_senior_jd and candidate_years < 4:
+            seniority_gap = "Seniority Gap: Role requires Senior/Lead level (5-8+ yrs experience)"
+            missing_skills.insert(0, "Senior Experience (5+ Yrs)")
+
+        # Check Education Requirements
+        education_gap = None
+        if "master" in desc_lower or "m.s." in desc_lower or "phd" in desc_lower:
+            if not any(e in combined_candidate for e in ["master", "m.s.", "phd", "doctorate"]):
+                education_gap = "Education Gap: JD mentions Master's / Ph.D. preference"
+
+        # Mandatory Core Title Skill Penalty
+        mandatory_title_missing = False
+        for key, display_name in KNOWN_TECH_SKILLS.items():
+            if key in title_lower and key not in combined_candidate:
+                mandatory_title_missing = True
+                missing_skills.insert(0, display_name)
+                break
+
+        # Calculate Score
+        if jd_tech_requirements:
+            match_ratio = len(matching_skills) / max(len(jd_tech_requirements), 1)
+            raw_score = int(match_ratio * 85) + 10
+        else:
+            raw_score = 55
+
+        # Apply strict penalties for missing core title skills or seniority
+        if mandatory_title_missing:
+            raw_score = min(raw_score, 38)
+        
+        if is_senior_jd and candidate_years < 4:
+            raw_score = min(raw_score, 45)
+
+        # Portfolio gaps
+        portfolio_gaps = []
+        if seniority_gap:
+            portfolio_gaps.append(seniority_gap)
+        if education_gap:
+            portfolio_gaps.append(education_gap)
+        if mandatory_title_missing:
+            portfolio_gaps.append(f"Missing core technology requirement: {missing_skills[0]}")
+
+        if "docker" in desc_lower and "docker" not in combined_candidate:
+            portfolio_gaps.append("Missing Docker containerization proof in portfolio")
+        if "ci/cd" in desc_lower and "ci/cd" not in combined_candidate:
+            portfolio_gaps.append("No automated CI/CD pipeline in public repos")
+
+        if not portfolio_gaps:
+            portfolio_gaps.append("Solid alignment with technical requirements")
+
+        # Badges
+        if raw_score >= 82:
+            badge = "Strong Fit"
+        elif raw_score >= 68:
+            badge = "Good Match"
+        elif raw_score >= 50:
+            badge = "Moderate Fit"
+        else:
+            badge = "Low Fit"
+
+        # Work Auth check
+        sponsorship_val = profile_data.get("sponsorship_req", "")
+        work_auth_fit = "Authorized"
+        if "visa" in desc_lower or "sponsorship" in desc_lower:
+            if "sponsorship required" in sponsorship_val.lower():
+                work_auth_fit = "Visa Sponsorship Required"
+            else:
+                work_auth_fit = "No Sponsorship Needed"
+
+        return {
+            "score": raw_score,
+            "badge": badge,
+            "matching_skills": list(dict.fromkeys(matching_skills))[:4],
+            "missing_skills": list(dict.fromkeys(missing_skills))[:3],
+            "portfolio_gaps": portfolio_gaps[:3],
+            "work_auth_fit": work_auth_fit,
+        }
+
+
+
+
 
     def analyze_portfolio_gaps(
         self, resume_text: str, github_summary: str
