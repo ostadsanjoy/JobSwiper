@@ -248,9 +248,8 @@ def aggregate_jobs(keywords: str = "", location: str = "", remote_type: str = ""
     if keywords:
         kw = keywords.lower()
         jobs = [j for j in jobs if kw in j["title"].lower() or kw in j["description"].lower() or j["source"].endswith("-firecrawl")]
-    if location:
-        loc = location.lower()
-        jobs = [j for j in jobs if loc in j["location"].lower() or j["source"].startswith("adzuna") or j["source"].endswith("-firecrawl")]
+    # ponytail: no location post-filter — people can relocate. Location param
+    # already narrows Adzuna API results at the source, which is enough.
     if remote_type and remote_type != "any":
         jobs = [j for j in jobs if j["remote_type"] == remote_type]
 

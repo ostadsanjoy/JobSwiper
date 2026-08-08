@@ -32,7 +32,8 @@ app.add_middleware(
 gemini = GeminiService()
 
 JOB_CACHE: dict = {}
-MATCH_CACHE: dict = {}
+FAST_MATCH_CACHE: dict = {}   # heuristic scores for card list
+MATCH_CACHE: dict = {}        # LLM-based detailed scores for detail view
 
 GENERATED_RESUMES_DIR = os.path.join(os.path.dirname(__file__), "generated_resumes")
 
@@ -102,7 +103,7 @@ def get_jobs(keywords: str = "", location: str = "", remote_type: str = "", coun
         job["match_score"] = match_eval.get("score", 50)
         job["match_badge"] = match_eval.get("badge", "Unrated")
         JOB_CACHE[job_id] = job
-        MATCH_CACHE[job_id] = match_eval
+        FAST_MATCH_CACHE[job_id] = match_eval
 
         # Strict keyword relevance check if user searched specific terms
         if kw_tokens:
